@@ -509,15 +509,41 @@ class TTSApp:
             
             # Load audio file
             data, sr = sf.read(audio_file, dtype='float32')
-            print(f"Audio loaded: {len(data)} samples at {sr}Hz")
+            print(f"Audio loaded: {len(data)} samples at {sr}Hz, shape: {data.shape}")
+            
+            # Ensure audio is mono for compatibility
+            if len(data.shape) > 1:
+                data = data.mean(axis=1)  # Convert stereo to mono
             
             # Calculate duration for progress bar
             duration = len(data) / sr
             
             # Start playback on multiple devices
             for device_index in device_indices:
-                print(f"Playing on device {device_index}")
-                sd.play(data, sr, device=device_index)
+                try:
+                    print(f"Playing on device {device_index}")
+                    
+                    # Get device info
+                    device_info = sd.query_devices(device_index)
+                    max_channels = device_info['max_output_channels']
+                    
+                    # Prepare audio data for this device
+                    if max_channels == 1:
+                        # Device is mono, use data as-is
+                        output_data = data
+                    elif max_channels >= 2:
+                        # Device is stereo or more, duplicate mono to stereo
+                        import numpy as np
+                        output_data = np.column_stack([data, data])
+                    else:
+                        print(f"Warning: Device {device_index} has {max_channels} channels")
+                        continue
+                    
+                    sd.play(output_data, sr, device=device_index)
+                    
+                except Exception as device_error:
+                    print(f"Error playing on device {device_index}: {device_error}")
+                    # Continue to next device instead of failing completely
             
             # Update progress bar
             self._update_progress(duration)
